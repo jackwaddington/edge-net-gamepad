@@ -106,6 +106,7 @@ mqtt = MQTT.MQTT(
     port=config.MQTT_PORT,
     client_id=config.MQTT_CLIENT,
     socket_pool=pool,
+    socket_timeout=1,
 )
 mqtt.on_message = on_led
 mqtt.connect()
@@ -113,12 +114,20 @@ mqtt.subscribe("edge-net/gamepad/led")
 mqtt.subscribe("edge-net/gamepad/led/clear")
 
 # ── Main loop ───────────────────────────────────────────────────────────────
+# This node mostly *publishes* input; it only *subscribes* for rare LED commands.
+# mqtt.loop() blocks up to socket_timeout, so calling it every cycle would freeze
+# input. Service incoming infrequently; publishing keeps the connection alive.
 last_btns = 0
 last_x = last_y = 512
 CENTRE = 512
+SERVICE_EVERY = 5          # seconds between mqtt.loop() calls for incoming
+last_service = time.monotonic()
 
 while True:
-    mqtt.loop(timeout=0)
+    now = time.monotonic()
+    if now - last_service >= SERVICE_EVERY:
+        mqtt.loop(timeout=1)
+        last_service = now
 
     b = read_buttons()
     changed = b ^ last_btns
